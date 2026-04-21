@@ -9,6 +9,7 @@ const selectedAgent = ref(null)
 const agentDetail = ref(null)
 const detailLoading = ref(false)
 const toggling = ref({})
+const expandedTurnId = ref(null)
 const viewMode = ref('cards') // 'cards' or 'table'
 const sortKey = ref('name')
 const sortAsc = ref(true)
@@ -79,7 +80,7 @@ async function selectAgent(agent) {
   try {
     const [tokens, conversation] = await Promise.allSettled([
       apiFetch(`/api/agents/${agent.id}/tokens`),
-      apiFetch(`/api/agents/${agent.id}/conversation?limit=5`),
+      apiFetch(`/api/agents/${agent.id}/conversation?limit=50`),
     ])
     const convoData = conversation.status === 'fulfilled' ? conversation.value : {}
     agentDetail.value = {
@@ -113,6 +114,19 @@ async function toggleAgent(agent, event) {
   } finally {
     toggling.value[agent.id] = false
   }
+}
+
+function toggleTurnDetail(turnId) {
+  expandedTurnId.value = expandedTurnId.value === turnId ? null : turnId
+}
+
+function getConversationForTurn(tokenEntry) {
+  if (!agentDetail.value?.conversation?.length) return []
+  const ts = tokenEntry.created_at
+  // Find conversation turns within 5 seconds of this token usage
+  return agentDetail.value.conversation
+    .filter(t => Math.abs(t.created_at - ts) <= 5)
+    .sort((a, b) => a.created_at - b.created_at)
 }
 
 function formatCost(val) {
@@ -308,13 +322,14 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-            <!-- Token Usage Per Turn -->
+            <!-- Token Usage Per Turn (clickable) -->
             <div v-if="agentDetail.tokenUsage?.length > 0">
-              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Token Usage Per Turn</h4>
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Token Usage Per Turn <span class="text-gray-600 font-normal">(click row to expand)</span></h4>
               <div class="bg-gray-800 rounded-lg overflow-hidden">
                 <table class="w-full text-xs">
                   <thead>
                     <tr class="text-gray-500 border-b border-gray-700">
+                      <th class="text-left p-2 w-5"></th>
                       <th class="text-left p-2">Time</th>
                       <th class="text-right p-2">Input</th>
                       <th class="text-right p-2">Output</th>
@@ -323,13 +338,59 @@ onUnmounted(() => {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="u in agentDetail.tokenUsage" :key="u.id" class="border-b border-gray-700/50">
-                      <td class="p-2 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
-                      <td class="p-2 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
-                      <td class="p-2 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
-                      <td class="p-2 text-right text-cyan-400 font-mono">{{ formatNum(u.cache_read) }}</td>
-                      <td class="p-2 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
-                    </tr>
+                    <template v-for="u in agentDetail.tokenUsage" :key="u.id">
+                      <tr
+                        @click="toggleTurnDetail(u.id)"
+                        class="border-b border-gray-700/50 cursor-pointer hover:bg-gray-700/30 transition-colors"
+                        :class="expandedTurnId === u.id ? 'bg-gray-700/40' : ''"
+                      >
+                        <td class="p-2 text-gray-500">{{ expandedTurnId === u.id ? '&#9660;' : '&#9654;' }}</td>
+                        <td class="p-2 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
+                        <td class="p-2 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
+                        <td class="p-2 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
+                        <td class="p-2 text-right text-cyan-400 font-mono">{{ formatNum(u.cache_read) }}</td>
+                        <td class="p-2 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
+                      </tr>
+                      <!-- Collapsible detail panel -->
+                      <tr v-if="expandedTurnId === u.id">
+                        <td colspan="6" class="p-0">
+                          <div class="bg-gray-900/80 border-t border-b border-gray-600/30 p-3">
+                            <div v-if="getConversationForTurn(u).length > 0" class="space-y-2">
+                              <div v-for="(turn, ti) in getConversationForTurn(u)" :key="ti" class="rounded p-2.5"
+                                :class="turn.role === 'user' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-purple-500/10 border border-purple-500/20'"
+                              >
+                                <div class="flex items-center gap-2 mb-1">
+                                  <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                                    :class="turn.role === 'user' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'"
+                                  >{{ turn.role === 'user' ? ('Louie #' + (turn.chat_id || '')) : (selectedAgent?.name || 'Agent') }}</span>
+                                  <span class="text-gray-600 text-[10px]">{{ new Date(turn.created_at * 1000).toLocaleTimeString() }}</span>
+                                </div>
+                                <div class="text-gray-300 text-xs whitespace-pre-wrap">{{ (turn.content || '').slice(0, 500) }}{{ (turn.content || '').length > 500 ? '...' : '' }}</div>
+                              </div>
+                            </div>
+                            <div v-else class="text-gray-500 text-xs py-2">No conversation data found for this turn.</div>
+                            <div class="mt-2 grid grid-cols-4 gap-2 text-[10px]">
+                              <div class="bg-gray-800 rounded p-1.5">
+                                <span class="text-gray-500">Session:</span>
+                                <span class="text-gray-400 font-mono ml-1">{{ (u.session_id || '').slice(0, 8) }}...</span>
+                              </div>
+                              <div class="bg-gray-800 rounded p-1.5">
+                                <span class="text-gray-500">Context:</span>
+                                <span class="text-cyan-400 font-mono ml-1">{{ formatNum(u.context_tokens) }}</span>
+                              </div>
+                              <div class="bg-gray-800 rounded p-1.5">
+                                <span class="text-gray-500">Compacted:</span>
+                                <span class="font-mono ml-1" :class="u.did_compact ? 'text-amber-400' : 'text-gray-500'">{{ u.did_compact ? 'Yes' : 'No' }}</span>
+                              </div>
+                              <div class="bg-gray-800 rounded p-1.5">
+                                <span class="text-gray-500">Cost:</span>
+                                <span class="text-amber-400 font-mono ml-1">{{ formatCost(u.cost_usd) }}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </template>
                   </tbody>
                 </table>
               </div>
@@ -500,13 +561,14 @@ onUnmounted(() => {
                     <div class="text-sm font-mono text-gray-200">{{ agentDetail.tokens?.totalTurns ?? 0 }}</div>
                   </div>
                 </div>
-                <!-- Token Usage Per Turn (card view) -->
+                <!-- Token Usage Per Turn (card view, clickable) -->
                 <div v-if="agentDetail.tokenUsage?.length > 0">
-                  <h4 class="text-[10px] text-gray-500 uppercase font-semibold mb-1">Token Usage Per Turn</h4>
+                  <h4 class="text-[10px] text-gray-500 uppercase font-semibold mb-1">Token Usage Per Turn <span class="text-gray-600 font-normal">(click to expand)</span></h4>
                   <div class="bg-gray-800 rounded overflow-hidden">
                     <table class="w-full text-[11px]">
                       <thead>
                         <tr class="text-gray-500 border-b border-gray-700">
+                          <th class="text-left p-1.5 w-4"></th>
                           <th class="text-left p-1.5">Time</th>
                           <th class="text-right p-1.5">In</th>
                           <th class="text-right p-1.5">Out</th>
@@ -514,12 +576,41 @@ onUnmounted(() => {
                         </tr>
                       </thead>
                       <tbody>
-                        <tr v-for="u in agentDetail.tokenUsage" :key="u.id" class="border-b border-gray-700/50">
-                          <td class="p-1.5 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
-                          <td class="p-1.5 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
-                          <td class="p-1.5 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
-                          <td class="p-1.5 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
-                        </tr>
+                        <template v-for="u in agentDetail.tokenUsage" :key="u.id">
+                          <tr
+                            @click="toggleTurnDetail(u.id)"
+                            class="border-b border-gray-700/50 cursor-pointer hover:bg-gray-700/30 transition-colors"
+                            :class="expandedTurnId === u.id ? 'bg-gray-700/40' : ''"
+                          >
+                            <td class="p-1.5 text-gray-500">{{ expandedTurnId === u.id ? '&#9660;' : '&#9654;' }}</td>
+                            <td class="p-1.5 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
+                            <td class="p-1.5 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
+                            <td class="p-1.5 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
+                            <td class="p-1.5 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
+                          </tr>
+                          <tr v-if="expandedTurnId === u.id">
+                            <td colspan="5" class="p-0">
+                              <div class="bg-gray-900/80 border-t border-b border-gray-600/30 p-2.5">
+                                <div v-if="getConversationForTurn(u).length > 0" class="space-y-1.5">
+                                  <div v-for="(turn, ti) in getConversationForTurn(u)" :key="ti" class="rounded p-2"
+                                    :class="turn.role === 'user' ? 'bg-blue-500/10 border border-blue-500/20' : 'bg-purple-500/10 border border-purple-500/20'"
+                                  >
+                                    <span class="px-1 py-0.5 rounded text-[9px] font-semibold uppercase"
+                                      :class="turn.role === 'user' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'"
+                                    >{{ turn.role === 'user' ? ('Louie #' + (turn.chat_id || '')) : (selectedAgent?.name || 'Agent') }}</span>
+                                    <div class="text-gray-300 text-[11px] mt-1 whitespace-pre-wrap">{{ (turn.content || '').slice(0, 300) }}{{ (turn.content || '').length > 300 ? '...' : '' }}</div>
+                                  </div>
+                                </div>
+                                <div v-else class="text-gray-500 text-[11px] py-1">No conversation data for this turn.</div>
+                                <div class="mt-1.5 flex gap-2 text-[9px]">
+                                  <span class="bg-gray-800 rounded px-1.5 py-0.5"><span class="text-gray-500">Context:</span> <span class="text-cyan-400 font-mono">{{ formatNum(u.context_tokens) }}</span></span>
+                                  <span class="bg-gray-800 rounded px-1.5 py-0.5"><span class="text-gray-500">Cache:</span> <span class="text-cyan-400 font-mono">{{ formatNum(u.cache_read) }}</span></span>
+                                  <span v-if="u.did_compact" class="bg-amber-500/20 text-amber-400 rounded px-1.5 py-0.5">Compacted</span>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </template>
                       </tbody>
                     </table>
                   </div>
