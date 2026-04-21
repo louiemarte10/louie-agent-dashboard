@@ -405,7 +405,7 @@ onUnmounted(() => {
                   <button
                     @click="toggleAgent(agent, $event)"
                     :disabled="toggling[agent.id]"
-                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 cursor-pointer"
                     :class="agent.running ? 'bg-emerald-500' : 'bg-gray-600'"
                     :title="agent.running ? 'Turn Off' : 'Turn On'"
                   >
