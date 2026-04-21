@@ -8,6 +8,7 @@ const error = ref(null)
 const selectedAgent = ref(null)
 const agentDetail = ref(null)
 const detailLoading = ref(false)
+const toggling = ref({})
 const viewMode = ref('cards') // 'cards' or 'table'
 const sortKey = ref('name')
 const sortAsc = ref(true)
@@ -88,6 +89,26 @@ async function selectAgent(agent) {
     agentDetail.value = null
   } finally {
     detailLoading.value = false
+  }
+}
+
+async function toggleAgent(agent, event) {
+  event.stopPropagation()
+  if (agent.id === 'main') return
+  toggling.value[agent.id] = true
+  try {
+    if (agent.running) {
+      await apiFetch(`/api/agents/${agent.id}/deactivate`, { method: 'POST' })
+    } else {
+      await apiFetch(`/api/agents/${agent.id}/activate`, { method: 'POST' })
+    }
+    // Wait a moment for process to start/stop, then refresh
+    await new Promise(r => setTimeout(r, 2000))
+    await loadAgents()
+  } catch (e) {
+    console.error('Toggle failed:', e)
+  } finally {
+    toggling.value[agent.id] = false
   }
 }
 
@@ -180,7 +201,7 @@ onUnmounted(() => {
             >
               <td class="p-3">
                 <div class="flex items-center gap-2">
-                  <span>{{ agent.id === 'main' ? '\uD83D\uDEF0\uFE0F' : '\uD83E\uDD16' }}</span>
+                  <span>{{ agent.id === 'main' ? '&#x1F6F0;&#xFE0F;' : '&#x1F916;' }}</span>
                   <span class="font-medium text-gray-100">{{ agent.name }}</span>
                   <span v-if="agent.id === 'main'" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">MANAGER</span>
                 </div>
@@ -208,7 +229,7 @@ onUnmounted(() => {
         <div class="bg-gray-900 rounded-lg border border-gray-700 p-5">
           <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-3">
-              <span class="text-2xl">{{ selectedAgent.id === 'main' ? '\uD83D\uDEF0\uFE0F' : '\uD83E\uDD16' }}</span>
+              <span class="text-2xl">{{ selectedAgent.id === 'main' ? '&#x1F6F0;&#xFE0F;' : '&#x1F916;' }}</span>
               <div>
                 <div class="font-semibold text-gray-100 text-lg">{{ selectedAgent.name }}</div>
                 <div class="text-xs text-gray-500 font-mono">{{ selectedAgent.model }} &middot; {{ selectedAgent.id }}</div>
@@ -291,7 +312,7 @@ onUnmounted(() => {
         >
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-3">
-              <span class="text-2xl">\uD83D\uDEF0\uFE0F</span>
+              <span class="text-2xl">&#x1F6F0;&#xFE0F;</span>
               <div>
                 <div class="font-semibold text-gray-100 text-lg">{{ managerAgent.name }}</div>
                 <div v-if="managerAgent.botUsername" class="text-xs text-gray-500 font-mono">@{{ managerAgent.botUsername }}</div>
@@ -370,16 +391,30 @@ onUnmounted(() => {
             >
               <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-2">
-                  <span class="text-lg">\uD83E\uDD16</span>
+                  <span class="text-lg">&#x1F916;</span>
                   <span class="font-medium text-gray-100">{{ agent.name }}</span>
                 </div>
-                <span
-                  class="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-                  :class="agent.running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-700 text-gray-400'"
-                >
-                  <span class="w-1.5 h-1.5 rounded-full" :class="agent.running ? 'bg-emerald-400' : 'bg-gray-500'"></span>
-                  {{ agent.running ? 'Running' : 'Offline' }}
-                </span>
+                <div class="flex items-center gap-2">
+                  <span
+                    class="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                    :class="agent.running ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-700 text-gray-400'"
+                  >
+                    <span class="w-1.5 h-1.5 rounded-full" :class="agent.running ? 'bg-emerald-400' : 'bg-gray-500'"></span>
+                    {{ agent.running ? 'On' : 'Off' }}
+                  </span>
+                  <button
+                    @click="toggleAgent(agent, $event)"
+                    :disabled="toggling[agent.id]"
+                    class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50"
+                    :class="agent.running ? 'bg-emerald-500' : 'bg-gray-600'"
+                    :title="agent.running ? 'Turn Off' : 'Turn On'"
+                  >
+                    <span
+                      class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
+                      :class="agent.running ? 'translate-x-4' : 'translate-x-0.5'"
+                    ></span>
+                  </button>
+                </div>
               </div>
               <div v-if="agent.model" class="text-xs text-gray-600 font-mono mb-1">{{ agent.model }}</div>
               <div v-if="agent.description" class="text-xs text-gray-500 mb-3 line-clamp-2">{{ agent.description }}</div>
