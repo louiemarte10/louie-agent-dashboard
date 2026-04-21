@@ -23,9 +23,12 @@ A real-time web dashboard that monitors and controls your fleet of AI agents run
 | Feature | Description |
 |---------|-------------|
 | **Agent Monitoring** | Real-time status of manager bot + all tenant agents |
-| **Toggle Switch** | Turn tenant agents On/Off directly from the dashboard |
-| **Token Usage** | Input/output token counts with visual bar charts |
+| **Toggle Switch** | Turn tenant agents On/Off with loading spinner animation |
+| **Clickable Cards** | Click any agent to expand detail panel with charts and stats |
+| **Token Usage Charts** | Input/output token counts with visual bar charts per agent |
+| **Token Usage Per Turn** | Table showing input, output, cache read tokens and cost per turn |
 | **Cost Tracking** | Today and total cost per agent |
+| **Telegram Username** | Recent Activity displays Telegram user labels with timestamps |
 | **Hive Mind Feed** | Cross-agent activity log with color-coded agent badges |
 | **Memory Browser** | View memory stats, fading memories, top accessed |
 | **Task Management** | Scheduled cron jobs and mission task queue |
@@ -52,9 +55,16 @@ System overview with health cards (context window %, turns, compactions, Telegra
 ### Agents
 Interactive agent fleet view with two modes:
 - **Cards View** -- visual cards for each agent with expandable detail panels showing token usage charts, costs, model info, and recent conversation
-- **Table View** -- sortable data table with all agent metrics
+- **Table View** -- sortable data table with all agent metrics, click any column header to sort
 
-Each tenant agent has an **On/Off toggle switch** that starts or stops the agent process remotely.
+Each tenant agent has an **On/Off toggle switch** with a loading spinner animation that starts or stops the agent process remotely.
+
+Clicking any agent (card or table row) expands a detail panel showing:
+- Input/output tokens with visual bar charts
+- Today and total cost breakdown
+- Turn counts and model info
+- **Recent Activity** with Telegram username labels and timestamps
+- **Token Usage Per Turn** table with input, output, cache read tokens and cost per individual turn
 
 ### Hive Mind
 Chronological activity feed showing what all agents have been doing. Each entry has a color-coded agent badge, action type, summary, and timestamp. Auto-refreshes every 30 seconds.
