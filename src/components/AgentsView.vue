@@ -81,9 +81,11 @@ async function selectAgent(agent) {
       apiFetch(`/api/agents/${agent.id}/tokens`),
       apiFetch(`/api/agents/${agent.id}/conversation?limit=5`),
     ])
+    const convoData = conversation.status === 'fulfilled' ? conversation.value : {}
     agentDetail.value = {
       tokens: tokens.status === 'fulfilled' ? tokens.value : null,
-      conversation: conversation.status === 'fulfilled' ? conversation.value.turns : [],
+      conversation: convoData.turns || [],
+      tokenUsage: convoData.tokenUsage || [],
     }
   } catch {
     agentDetail.value = null
@@ -285,14 +287,50 @@ onUnmounted(() => {
                 <div class="text-2xl font-mono text-gray-100">{{ agentDetail.tokens?.totalTurns ?? 0 }}</div>
               </div>
             </div>
-            <!-- Recent Conversation -->
+            <!-- Recent Activity with Token Usage -->
             <div v-if="agentDetail.conversation?.length > 0">
               <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Recent Activity</h4>
-              <div class="space-y-2 max-h-48 overflow-y-auto">
+              <div class="space-y-2 max-h-72 overflow-y-auto">
                 <div v-for="(turn, i) in agentDetail.conversation" :key="i" class="bg-gray-800 rounded p-3 text-xs">
-                  <span class="font-mono text-gray-500">{{ turn.role }}:</span>
-                  <span class="text-gray-300 ml-2">{{ (turn.content || '').slice(0, 150) }}{{ (turn.content || '').length > 150 ? '...' : '' }}</span>
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
+                        :class="turn.role === 'user' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'"
+                      >
+                        {{ turn.role === 'user' ? (selectedAgent?.botUsername ? '@' + selectedAgent.botUsername.replace('_bot', '') : 'User') : selectedAgent?.name || 'Agent' }}
+                      </span>
+                      <span class="text-gray-600 text-[10px]">{{ new Date(turn.created_at * 1000).toLocaleString() }}</span>
+                    </div>
+                  </div>
+                  <div class="text-gray-300 mt-1">{{ (turn.content || '').slice(0, 200) }}{{ (turn.content || '').length > 200 ? '...' : '' }}</div>
                 </div>
+              </div>
+            </div>
+            <!-- Token Usage Per Turn -->
+            <div v-if="agentDetail.tokenUsage?.length > 0">
+              <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 mt-4">Token Usage Per Turn</h4>
+              <div class="bg-gray-800 rounded-lg overflow-hidden">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="text-gray-500 border-b border-gray-700">
+                      <th class="text-left p-2">Time</th>
+                      <th class="text-right p-2">Input</th>
+                      <th class="text-right p-2">Output</th>
+                      <th class="text-right p-2">Cache Read</th>
+                      <th class="text-right p-2">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="u in agentDetail.tokenUsage" :key="u.id" class="border-b border-gray-700/50">
+                      <td class="p-2 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
+                      <td class="p-2 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
+                      <td class="p-2 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
+                      <td class="p-2 text-right text-cyan-400 font-mono">{{ formatNum(u.cache_read) }}</td>
+                      <td class="p-2 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -409,7 +447,11 @@ onUnmounted(() => {
                     :class="agent.running ? 'bg-emerald-500' : 'bg-gray-600'"
                     :title="agent.running ? 'Turn Off' : 'Turn On'"
                   >
+                    <span v-if="toggling[agent.id]" class="absolute inset-0 flex items-center justify-center">
+                      <span class="w-3 h-3 border-2 border-white/60 border-t-transparent rounded-full animate-spin"></span>
+                    </span>
                     <span
+                      v-else
                       class="inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform"
                       :class="agent.running ? 'translate-x-4' : 'translate-x-0.5'"
                     ></span>
@@ -455,6 +497,30 @@ onUnmounted(() => {
                   <div class="bg-gray-800 rounded p-2.5">
                     <div class="text-[10px] text-gray-500 uppercase">Turns</div>
                     <div class="text-sm font-mono text-gray-200">{{ agentDetail.tokens?.totalTurns ?? 0 }}</div>
+                  </div>
+                </div>
+                <!-- Token Usage Per Turn (card view) -->
+                <div v-if="agentDetail.tokenUsage?.length > 0">
+                  <h4 class="text-[10px] text-gray-500 uppercase font-semibold mb-1">Token Usage Per Turn</h4>
+                  <div class="bg-gray-800 rounded overflow-hidden">
+                    <table class="w-full text-[11px]">
+                      <thead>
+                        <tr class="text-gray-500 border-b border-gray-700">
+                          <th class="text-left p-1.5">Time</th>
+                          <th class="text-right p-1.5">In</th>
+                          <th class="text-right p-1.5">Out</th>
+                          <th class="text-right p-1.5">Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="u in agentDetail.tokenUsage" :key="u.id" class="border-b border-gray-700/50">
+                          <td class="p-1.5 text-gray-400">{{ new Date(u.created_at * 1000).toLocaleTimeString() }}</td>
+                          <td class="p-1.5 text-right text-blue-400 font-mono">{{ formatNum(u.input_tokens) }}</td>
+                          <td class="p-1.5 text-right text-purple-400 font-mono">{{ formatNum(u.output_tokens) }}</td>
+                          <td class="p-1.5 text-right text-amber-400 font-mono">{{ formatCost(u.cost_usd) }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               </div>
