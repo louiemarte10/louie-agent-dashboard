@@ -86,6 +86,7 @@ async function selectAgent(agent) {
       tokens: tokens.status === 'fulfilled' ? tokens.value : null,
       conversation: convoData.turns || [],
       tokenUsage: convoData.tokenUsage || [],
+      chatId: convoData.chatId || '',
     }
   } catch {
     agentDetail.value = null
@@ -298,7 +299,7 @@ onUnmounted(() => {
                         class="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase"
                         :class="turn.role === 'user' ? 'bg-blue-500/20 text-blue-400' : 'bg-purple-500/20 text-purple-400'"
                       >
-                        {{ turn.role === 'user' ? (selectedAgent?.botUsername ? '@' + selectedAgent.botUsername.replace('_bot', '') : 'User') : selectedAgent?.name || 'Agent' }}
+                        {{ turn.role === 'user' ? ('Louie #' + (turn.chat_id || agentDetail.chatId || '')) : (selectedAgent?.name || 'Agent') }}
                       </span>
                       <span class="text-gray-600 text-[10px]">{{ new Date(turn.created_at * 1000).toLocaleString() }}</span>
                     </div>
