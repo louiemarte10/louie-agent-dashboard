@@ -7,7 +7,9 @@ const token = ref('')
 const chatId = ref('')
 const saved = ref(false)
 const testing = ref(false)
+const loadingTunnel = ref(false)
 const testResult = ref(null)
+const tunnelResult = ref(null)
 
 onMounted(() => {
   apiUrl.value = getApiUrl()
@@ -26,7 +28,6 @@ async function testConnection() {
   testing.value = true
   testResult.value = null
   try {
-    // Save first so apiFetch uses the new values
     saveConfig(apiUrl.value, token.value, chatId.value)
     const res = await apiFetch('/api/health')
     testResult.value = { success: true, message: `Connected. Model: ${res.model || 'unknown'}, Turns: ${res.turns ?? 0}` }
@@ -34,6 +35,26 @@ async function testConnection() {
     testResult.value = { success: false, message: e.message }
   } finally {
     testing.value = false
+  }
+}
+
+async function loadTunnelUrl() {
+  loadingTunnel.value = true
+  tunnelResult.value = null
+  try {
+    saveConfig(apiUrl.value, token.value, chatId.value)
+    const res = await apiFetch('/api/tunnel-url')
+    if (res.found && res.url) {
+      apiUrl.value = res.url
+      saveConfig(apiUrl.value, token.value, chatId.value)
+      tunnelResult.value = { success: true, message: `Loaded: ${res.url}` }
+    } else {
+      tunnelResult.value = { success: false, message: 'No active tunnel found. Run start-tunnel.bat on your PC first.' }
+    }
+  } catch (e) {
+    tunnelResult.value = { success: false, message: `Could not reach bot: ${e.message}` }
+  } finally {
+    loadingTunnel.value = false
   }
 }
 </script>
@@ -76,7 +97,7 @@ async function testConnection() {
           />
         </div>
 
-        <div class="flex items-center gap-3 pt-2">
+        <div class="flex items-center gap-3 pt-2 flex-wrap">
           <button
             @click="handleSave"
             class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition-colors"
@@ -90,7 +111,24 @@ async function testConnection() {
           >
             {{ testing ? 'Testing...' : 'Test Connection' }}
           </button>
+          <button
+            @click="loadTunnelUrl"
+            :disabled="loadingTunnel"
+            class="px-4 py-2 bg-sky-700 hover:bg-sky-600 text-gray-200 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+            title="Reads the active Cloudflare tunnel URL from your running bot"
+          >
+            {{ loadingTunnel ? 'Loading...' : 'Load Tunnel URL' }}
+          </button>
           <span v-if="saved" class="text-emerald-400 text-sm">Saved.</span>
+        </div>
+
+        <!-- Tunnel URL result -->
+        <div
+          v-if="tunnelResult"
+          class="p-3 rounded-lg text-sm"
+          :class="tunnelResult.success ? 'bg-sky-500/10 border border-sky-500/30 text-sky-400' : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'"
+        >
+          {{ tunnelResult.message }}
         </div>
 
         <!-- Test result -->
